@@ -1,18 +1,31 @@
 #include <stdio.h>
 #include <freertos/FreeRTOS.h>
 #include <bmp280.h>
+#include "esp_timer.h"
 
 #define I2C_MASTER_SDA 21
 #define I2C_MASTER_SCL 22
 #define RAIN_PIN GPIO_NUM_4
+#define DEBOUNCE_TIME_US 50000
 
 bmp280_t bmp280;
 
 static int rain_bucket_count = 0;
+volatile uint32_t rain_count = 0;
+volatile int64_t last_time_us = 0;
 
 static void IRAM_ATTR handle_rain_state(void *arg) {
-    rain_bucket_count++;
+    
+    int64_t current_time_us = esp_timer_get_time();
+    
+    // Verifica se o tempo passado desde o último clique é maior que o debounce
+    if ((current_time_us - last_time_us) > DEBOUNCE_TIME_US) {
+        rain_bucket_count++;
+        last_time_us = current_time_us; // Atualiza o tempo do último clique válido
+    }
+
 }
+
 
 inline bool is_bme280p() {
     return bmp280.id == BME280_CHIP_ID;
@@ -36,8 +49,6 @@ void init_bmp280(void) {
 void setup(void) {
     ESP_ERROR_CHECK(i2cdev_init());
     init_bmp280();
-
-
     gpio_config_t io_conf = {
         .intr_type = GPIO_INTR_POSEDGE,
         .mode = GPIO_MODE_INPUT,
@@ -53,7 +64,6 @@ void setup(void) {
 
 void app_main(void) {
     setup();
-    int buckets = 0;
     float pressure, temperature, humidity;
     for (;;) {
         vTaskDelay(pdMS_TO_TICKS(500));
