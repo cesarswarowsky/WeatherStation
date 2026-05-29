@@ -4,10 +4,15 @@
 
 #define I2C_MASTER_SDA 21
 #define I2C_MASTER_SCL 22
-#define BUTTON_GPIO GPIO_NUM_4
-
+#define RAIN_PIN GPIO_NUM_4
 
 bmp280_t bmp280;
+
+static int rain_bucket_count = 0;
+
+static void IRAM_ATTR handle_rain_state(void *arg) {
+    rain_bucket_count++;
+}
 
 inline bool is_bme280p() {
     return bmp280.id == BME280_CHIP_ID;
@@ -31,19 +36,19 @@ void init_bmp280(void) {
 void setup(void) {
     ESP_ERROR_CHECK(i2cdev_init());
     init_bmp280();
-    
 
-    // 1. Configure the GPIO pin
+
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << BUTTON_GPIO),
+        .intr_type = GPIO_INTR_POSEDGE,
         .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE, // Use internal pull-up if button connects to GND
+        .pin_bit_mask = (1ULL << RAIN_PIN),
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE
+        .pull_up_en = GPIO_PULLUP_ENABLE,
     };
-    gpio_config(&io_conf);
 
-    
+    gpio_config(&io_conf);
+    gpio_install_isr_service(0);
+    gpio_isr_handler_add(RAIN_PIN, handle_rain_state, (void *) RAIN_PIN);
 }
 
 void app_main(void) {
@@ -62,12 +67,6 @@ void app_main(void) {
         if (is_bme280p()) {
         //    printf(", Umidade: %.2f", humidity);
         }
-        int button_state = gpio_get_level(BUTTON_GPIO);
-        if (button_state == 0) {
-            printf("Button is pressed!\n");
-        } else {
-            printf("Button is released.\n");
-        }
-        //printf("\n");
+        printf("count = %d\n", rain_bucket_count);
     }
 }
